@@ -61,82 +61,69 @@ async function startBot() {
 sock.ev.on('messages.upsert', async ({ messages, type }) => {
   if (type !== 'notify') return;
 
-  const msg = messages[0];
-  if (!msg.message) return;
+for (const msg of messages) {
+  if (!msg.message) continue;
 
   const MY_JID = '207202224705596@lid';
 
-  //--solo mi numero
-  if (msg.key.remoteJid !== MY_JID) {
-    console.log('⛔ Ignorado:', msg.key.remoteJid);
-    return;
-  }
-
-  //--solo mi chat personal
-  if (!msg.key.fromMe) return;
+  if (msg.key.remoteJid !== MY_JID) continue;
 
   const jid = msg.key.remoteJid;
 
   const text =
     msg.message.conversation ||
     msg.message.extendedTextMessage?.text ||
-    msg.message.imageMessage?.caption ||
     '';
 
-  console.log('✅ Mensaje válido:', text);
+  console.log('Texto ingresado: ', text);
 
-    try {
-      const partes = text.trim().split(/\s+/);
+  try {
+    const partes = text.trim().split(/\s+/);
 
-      console.log('🧪 PARTES:', partes);
-
-      //--Validación de caracteres
-      if (partes.length < 4) {
-        await sock.sendMessage(jid, {
-          text: '⚠️ Formato incorrecto\nEjemplo:\nAxel Volvo $20000 Reparacion completa'
-        });
-        return;
-      }
-
-      const nombre = partes[0];
-      const modelo = partes[1];
-
-      //
-      const coste = parseFloat(partes[2].replace('$', ''));
-
-      if (isNaN(coste)) {
-        await sock.sendMessage(jid, {
-          text: '⚠️ Coste inválido (usa número o $numero)'
-        });
-        return;
-      }
-
-      // 
-      const descripcion = partes.slice(3).join(' ');
-
-      //--guardado en mongo
-      const nuevoRegistro = new Registro({
-        nombre,
-        modelo,
-        coste,
-        descripcion
-      });
-
-      await nuevoRegistro.save();
-
-      console.log('✅ Guardado en Mongo');
-
+    if (partes.length < 4) {
       await sock.sendMessage(jid, {
-        text: `✅ Guardado:\n${nombre} - ${modelo} - $${coste}`
+        text: '⚠️ Formato incorrecto'
       });
-
-    } catch (error) {
-      console.log('❌ Error:', error);
-
-      await sock.sendMessage(jid, {
-        text: '❌ Error al procesar el mensaje'
-      });
+      continue;
     }
+
+    const nombre = partes[0];
+    const modelo = partes[1];
+    const coste = parseFloat(partes[2].replace('$', ''));
+
+    if (isNaN(coste)) {
+      await sock.sendMessage(jid, {
+        text: '⚠️ Coste inválido'
+      });
+      continue;
+    }
+
+    const descripcion = partes.slice(3).join(' ');
+
+    const nuevoRegistro = new Registro({
+      nombre,
+      modelo,
+      coste,
+      descripcion
+    });
+
+    await nuevoRegistro.save();
+
+    console.log('✅ Guardado en Mongo');
+
+    // 🔥 RESPUESTA AQUÍ (CLAVE)
+    await sock.sendMessage(msg.key.remoteJid, {
+      text: `✅ Guardado:\n${nombre} - ${modelo} - $${coste}`
+    });
+
+  } catch (err) {
+    console.log('❌ Error:', err);
+
+    await sock.sendMessage(jid, {
+      text: '❌ Error al guardar'
+    });
+  }
+}
   });
 }
 
