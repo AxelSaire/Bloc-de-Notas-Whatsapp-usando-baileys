@@ -3,16 +3,12 @@ const P = require('pino');
 const qrcode = require('qrcode-terminal');
 const mongoose = require('mongoose');
 
-// =======================
-// 🟢 CONEXIÓN A MONGO
-// =======================
+//--conexion con mongo
 mongoose.connect('mongodb://127.0.0.1:27017/botdb')
   .then(() => console.log('🟢 Mongo conectado'))
   .catch(err => console.log('🔴 Error Mongo:', err));
 
-// =======================
-// 📦 MODELO
-// =======================
+//--modelo
 const registroSchema = new mongoose.Schema({
   nombre: String,
   modelo: String,
@@ -23,9 +19,6 @@ const registroSchema = new mongoose.Schema({
 
 const Registro = mongoose.model('Registro', registroSchema);
 
-// =======================
-// 🚀 BOT
-// =======================
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth');
 
@@ -36,7 +29,7 @@ async function startBot() {
 
   sock.ev.on('creds.update', saveCreds);
 
-  // 🔌 CONEXIÓN
+  //-- establecer conexion
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update;
 
@@ -64,9 +57,7 @@ async function startBot() {
     }
   });
 
-  // =======================
-  // 📩 MENSAJES
-  // =======================
+  //--validacion chats
 sock.ev.on('messages.upsert', async ({ messages, type }) => {
   if (type !== 'notify') return;
 
@@ -75,13 +66,13 @@ sock.ev.on('messages.upsert', async ({ messages, type }) => {
 
   const MY_JID = '207202224705596@lid';
 
-  // 🔒 SOLO TU CHAT PERSONAL
+  //--solo mi numero
   if (msg.key.remoteJid !== MY_JID) {
     console.log('⛔ Ignorado:', msg.key.remoteJid);
     return;
   }
 
-  // 👇 Opcional: solo mensajes tuyos
+  //--solo mi chat personal
   if (!msg.key.fromMe) return;
 
   const jid = msg.key.remoteJid;
@@ -99,7 +90,7 @@ sock.ev.on('messages.upsert', async ({ messages, type }) => {
 
       console.log('🧪 PARTES:', partes);
 
-      // 🔒 Validación mínima
+      //--Validación de caracteres
       if (partes.length < 4) {
         await sock.sendMessage(jid, {
           text: '⚠️ Formato incorrecto\nEjemplo:\nAxel Volvo $20000 Reparacion completa'
@@ -110,7 +101,7 @@ sock.ev.on('messages.upsert', async ({ messages, type }) => {
       const nombre = partes[0];
       const modelo = partes[1];
 
-      // 💰 COSTE (acepta con o sin $)
+      //
       const coste = parseFloat(partes[2].replace('$', ''));
 
       if (isNaN(coste)) {
@@ -120,10 +111,10 @@ sock.ev.on('messages.upsert', async ({ messages, type }) => {
         return;
       }
 
-      // 📝 DESCRIPCIÓN
+      // 
       const descripcion = partes.slice(3).join(' ');
 
-      // 💾 GUARDAR EN MONGO
+      //--guardado en mongo
       const nuevoRegistro = new Registro({
         nombre,
         modelo,
@@ -149,5 +140,5 @@ sock.ev.on('messages.upsert', async ({ messages, type }) => {
   });
 }
 
-// ▶️ INICIAR
+//--inicio
 startBot();
