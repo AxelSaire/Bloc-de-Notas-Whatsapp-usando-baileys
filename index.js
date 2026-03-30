@@ -15,6 +15,50 @@ mongoose.connect('mongodb://127.0.0.1:27017/botdb')
   .then(() => console.log('🟢 Mongo conectado'))
   .catch(err => console.log('🔴 Error Mongo:', err));
 
+function parseInput(text) {
+  const regex = /\{([^}]+)\}|(\S+)/g;
+  const partes = [];
+
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    partes.push(match[1] || match[2]);
+  }
+
+  return partes;
+}
+async function generarCodigoUnico() {
+  let codigo;
+  let existe = true;
+
+  while (existe) {
+    codigo = Math.floor(100000 + Math.random() * 900000).toString();
+
+    const registro = await Registro.findOne({ codigo });
+    if (!registro) existe = false;
+  }
+
+  return codigo;
+}
+async function cancelarRegistro(codigo) {
+  const registro = await Registro.findOneAndUpdate(
+    { codigo },
+    { estado: 'pagado' },
+    { new: true }
+  );
+
+  return registro;
+}
+async function descontar(codigo, desc) {
+  let descuento = desc.toString().replace('$', '').trim();
+  const registro = await Registro.findOneAndUpdate(
+    { codigo },
+    { descuento: descuento },
+    { new: true }
+  );
+
+  return registro;
+}
+
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth');
 
@@ -80,7 +124,7 @@ sock.ev.on('messages.upsert', async ({ messages, type }) => {
 
     console.log('📩 Texto:', text);
 
-    if (text.toLowerCase() === 'excel') {
+    if (text.toLowerCase() === '/excel') {
       try {
         const filePath = await exportarExcel();
         console.log('Enviando Excel a', jid);
@@ -106,36 +150,136 @@ sock.ev.on('messages.upsert', async ({ messages, type }) => {
 
       continue;
     }
+      if (text.toLowerCase() === '/help') {
 
+      await sock.sendMessage(
+        jid,
+        {
+          text: `📌 *Instrucciones de uso*
+
+        *Formato para registrar*:
+        _{NOMBRE} {MODELO} $PRECIO {DESCRIPCION}_
+
+        Actualizar pago:
+        _/act CODIGO_
+
+        Aplicar descuento:
+        _/disc CODIGO $DESCUENTO_`
+        },
+        { quoted: msg }
+      );
+
+      continue;
+    }
+    if (text.toLowerCase().startsWith('/act')) {
+    const partes = text.split(' ');
+    const codigo = partes[1];
+
+    if (!codigo) {
+      await sock.sendMessage(jid, {
+        text: '⚠️ Usa: /act 123456'
+      });
+      continue;
+    }
+
+    const registro = await cancelarRegistro(codigo);
+
+    if (!registro) {
+      await sock.sendMessage(jid, {
+        text: '❌ Registro no encontrado'
+      });
+      continue;
+    }
+
+    await sock.sendMessage(
+      jid,
+      {
+        text: ` Registro ${codigo} pagado`
+      },
+      { quoted: msg }
+    );
+
+    continue;
+  }
+  if (text.toLowerCase().startsWith('/disc')) {
+    const partes = text.trim().split(/\s+/);
+
+    const codigo = partes[1];
+    const descuentoRaw = partes[2];
+
+    if (!codigo || !descuentoRaw) {
+      await sock.sendMessage(jid, {
+        text: '⚠️ Usa: /disc 123456 $600'
+      }, { quoted: msg });
+      continue;
+    }
+
+    const descuento = parseFloat(descuentoRaw.replace('$', ''));
+
+    if (isNaN(descuento)) {
+      await sock.sendMessage(jid, {
+        text: '⚠️ Descuento inválido'
+      });
+      continue;
+    }
+
+    // 🔍 Buscar registro
+    const registro = await descontar(codigo, descuentoRaw);
+
+    if (!registro) {
+      await sock.sendMessage(jid, {
+        text: '❌ Registro no encontrado'
+      });
+      continue;
+    }
+
+    await sock.sendMessage(
+      jid,
+      {
+        text: `💸 Descuento aplicado\nID: ${codigo}\nNuevo descuento: $${descuento}`
+      },
+      { quoted: msg }
+    );
+
+    continue;
+  }
     // --guardar
     try {
-      const partes = text.trim().split(/\s+/);
+      const partes = parseInput(text);
 
       if (partes.length < 4) {
         await sock.sendMessage(jid, {
-          text: '⚠️ Formato incorrecto\nEjemplo:\nAxel Volvo $20000 Reparacion completa'
+          text: 'Necesitas ayuda escribe /help'
         }, { quoted: msg });
         continue;
       }
 
-      const nombre = partes[0];
-      const modelo = partes[1];
+      const nombre = partes[0].trim();
+      const modelo = partes[1].trim();
       const coste = parseFloat(partes[2].replace('$', ''));
+      const descripcion = partes.slice(3).join(' ').trim();
+
+      if (!nombre || !modelo || !descripcion) {
+        await sock.sendMessage(jid, {
+          text: '⚠️ Nombre, modelo y descripción no pueden estar vacíos'
+        });
+        continue;
+      }
 
       if (isNaN(coste)) {
         await sock.sendMessage(jid, { text: '⚠️ Coste inválido' }, { quoted: msg });
         continue;
       }
+      const codigo = await generarCodigoUnico();
 
-      const descripcion = partes.slice(3).join(' ');
 
-      const nuevoRegistro = new Registro({ nombre, modelo, coste, descripcion });
+      const nuevoRegistro = new Registro({ codigo, nombre, modelo, coste, descripcion });
       await nuevoRegistro.save();
 
       console.log('✅ Guardado en Mongo');
 
       await sock.sendMessage(jid, {
-        text: `✅ Guardado:\n${nombre} - ${modelo} - $${coste}`
+        text: `✅ Guardado: *${codigo}* \n ${nombre}`
       }, { quoted: msg });
 
     } catch (error) {
