@@ -5,16 +5,17 @@ const qrcode = require('qrcode-terminal');
 const mongoose = require('mongoose');
 const fs = require('fs');
 
-//--importaciones
+// 📦 Importaciones
 const Registro = require('./models/Registro');
 const { exportarExcel } = require('./exportar');
 
-//--conexion mongo
+// =======================
+// 🟢 CONEXIÓN MONGO
+// =======================
 mongoose.connect('mongodb://127.0.0.1:27017/botdb')
   .then(() => console.log('🟢 Mongo conectado'))
   .catch(err => console.log('🔴 Error Mongo:', err));
 
-//--iniciar
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth');
 
@@ -52,26 +53,25 @@ async function startBot() {
       }
     }
   });
-//--mensaje
+
+  //--validacion chats
+
 sock.ev.on('messages.upsert', async ({ messages, type }) => {
   if (type !== 'notify') return;
 
   for (const msg of messages) {
     if (!msg.message) continue;
 
-                                                    // console.log('remoteJid:', msg.key.remoteJid);
-                                                    // console.log('MY_JID:', sock.user.id);
-                                                    // console.log('fromMe:', msg.key.fromMe);
-    //--Un solo JID dinámico, consistente
-    const jid_remoto = '207202224705596@lid';
-    const MY_JID = sock.user.id;
-
-    if (msg.key.remoteJid !== jid_remoto) {
+    // ✅ Un solo JID dinámico, consistente
+    const MY_JID = sock.user.id.replace(/:\d+/, '');
+    const my_id = '207202224705596@lid';
+    //console.log("este es mi j_id", MY_JID);
+    if (msg.key.remoteJid !== my_id) {
       console.log('⛔ Ignorado:', msg.key.remoteJid);
       continue;
     }
 
-    const jid = MY_JID; //--ya es el correcto
+    const jid = MY_JID; // ya es el correcto
 
     const text =
       msg.message.conversation ||
@@ -113,9 +113,9 @@ sock.ev.on('messages.upsert', async ({ messages, type }) => {
       const partes = text.trim().split(/\s+/);
 
       if (partes.length < 4) {
-        // await sock.sendMessage(jid, {
-        //   text: '⚠️ Formato incorrecto\nEjemplo:\nAxel Volvo $20000 Reparacion completa'
-        // }, { quoted: msg });
+        await sock.sendMessage(jid, {
+          text: '⚠️ Formato incorrecto\nEjemplo:\nAxel Volvo $20000 Reparacion completa'
+        }, { quoted: msg });
         continue;
       }
 
@@ -124,7 +124,7 @@ sock.ev.on('messages.upsert', async ({ messages, type }) => {
       const coste = parseFloat(partes[2].replace('$', ''));
 
       if (isNaN(coste)) {
-        //await sock.sendMessage(jid, { text: '⚠️ Coste inválido' }, { quoted: msg });
+        await sock.sendMessage(jid, { text: '⚠️ Coste inválido' }, { quoted: msg });
         continue;
       }
 
@@ -136,7 +136,7 @@ sock.ev.on('messages.upsert', async ({ messages, type }) => {
       console.log('✅ Guardado en Mongo');
 
       await sock.sendMessage(jid, {
-        text: `✅ Guardado`
+        text: `✅ Guardado:\n${nombre} - ${modelo} - $${coste}`
       }, { quoted: msg });
 
     } catch (error) {
