@@ -1,4 +1,3 @@
-
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const P = require('pino');
 const qrcode = require('qrcode-terminal');
@@ -26,7 +25,7 @@ async function startBot() {
 
   sock.ev.on('creds.update', saveCreds);
 
-  //--conexion
+  //-- establecer conexion
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update;
 
@@ -147,5 +146,5 @@ sock.ev.on('messages.upsert', async ({ messages, type }) => {
 });
 }
 
-//--iniciar
+//--inicio
 startBot();
