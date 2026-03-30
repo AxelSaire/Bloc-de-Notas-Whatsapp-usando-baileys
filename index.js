@@ -2,22 +2,18 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = requi
 const P = require('pino');
 const qrcode = require('qrcode-terminal');
 const mongoose = require('mongoose');
+const fs = require('fs');
 
-//--conexion con mongo
+// 📦 Importaciones
+const Registro = require('./models/Registro');
+const { exportarExcel } = require('./exportar');
+
+// =======================
+// 🟢 CONEXIÓN MONGO
+// =======================
 mongoose.connect('mongodb://127.0.0.1:27017/botdb')
   .then(() => console.log('🟢 Mongo conectado'))
   .catch(err => console.log('🔴 Error Mongo:', err));
-
-//--modelo
-const registroSchema = new mongoose.Schema({
-  nombre: String,
-  modelo: String,
-  coste: Number,
-  descripcion: String,
-  fecha: { type: Date, default: Date.now }
-});
-
-const Registro = mongoose.model('Registro', registroSchema);
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth');
@@ -58,73 +54,96 @@ async function startBot() {
   });
 
   //--validacion chats
+
 sock.ev.on('messages.upsert', async ({ messages, type }) => {
   if (type !== 'notify') return;
 
-for (const msg of messages) {
-  if (!msg.message) continue;
+  for (const msg of messages) {
+    if (!msg.message) continue;
 
-  const MY_JID = '207202224705596@lid';
-
-  if (msg.key.remoteJid !== MY_JID) continue;
-
-  const jid = msg.key.remoteJid;
-
-  const text =
-    msg.message.conversation ||
-    msg.message.extendedTextMessage?.text ||
-    '';
-
-  console.log('Texto ingresado: ', text);
-
-  try {
-    const partes = text.trim().split(/\s+/);
-
-    if (partes.length < 4) {
-      await sock.sendMessage(jid, {
-        text: '⚠️ Formato incorrecto'
-      });
+    // ✅ Un solo JID dinámico, consistente
+    const MY_JID = sock.user.id.replace(/:\d+/, '');
+    const my_id = '207202224705596@lid';
+    console.log("este es mi j_id", MY_JID);
+    if (msg.key.remoteJid !== my_id) {
+      console.log('⛔ Ignorado:', msg.key.remoteJid);
       continue;
     }
 
-    const nombre = partes[0];
-    const modelo = partes[1];
-    const coste = parseFloat(partes[2].replace('$', ''));
+    const jid = MY_JID; // ya es el correcto
 
-    if (isNaN(coste)) {
-      await sock.sendMessage(jid, {
-        text: '⚠️ Coste inválido'
-      });
+    const text =
+      msg.message.conversation ||
+      msg.message.extendedTextMessage?.text ||
+      msg.message.imageMessage?.caption ||
+      '';
+
+    console.log('📩 Texto:', text);
+
+    if (text.toLowerCase() === 'excel') {
+      try {
+        const filePath = await exportarExcel();
+        console.log('Enviando Excel a', jid);
+
+        // ✅ Leer como Buffer, no como URL
+        const fileBuffer = fs.readFileSync(filePath);
+
+        await sock.sendMessage(
+          jid,
+          {
+            document: fileBuffer,
+            mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            fileName: 'registros.xlsx'
+          },
+          { quoted: msg }
+        );
+
+        console.log('📤 Excel enviado');
+      } catch (err) {
+        console.error('❌ Error exportando:', err);
+        await sock.sendMessage(jid, { text: '❌ Error al exportar Excel' });
+      }
+
       continue;
     }
 
-    const descripcion = partes.slice(3).join(' ');
+    // --guardar
+    try {
+      const partes = text.trim().split(/\s+/);
 
-    const nuevoRegistro = new Registro({
-      nombre,
-      modelo,
-      coste,
-      descripcion
-    });
+      if (partes.length < 4) {
+        await sock.sendMessage(jid, {
+          text: '⚠️ Formato incorrecto\nEjemplo:\nAxel Volvo $20000 Reparacion completa'
+        }, { quoted: msg });
+        continue;
+      }
 
-    await nuevoRegistro.save();
+      const nombre = partes[0];
+      const modelo = partes[1];
+      const coste = parseFloat(partes[2].replace('$', ''));
 
-    console.log('✅ Guardado en Mongo');
+      if (isNaN(coste)) {
+        await sock.sendMessage(jid, { text: '⚠️ Coste inválido' }, { quoted: msg });
+        continue;
+      }
 
-    // 🔥 RESPUESTA AQUÍ (CLAVE)
-    await sock.sendMessage(msg.key.remoteJid, {
-      text: `✅ Guardado:\n${nombre} - ${modelo} - $${coste}`
-    });
+      const descripcion = partes.slice(3).join(' ');
 
-  } catch (err) {
-    console.log('❌ Error:', err);
+      const nuevoRegistro = new Registro({ nombre, modelo, coste, descripcion });
+      await nuevoRegistro.save();
 
-    await sock.sendMessage(jid, {
-      text: '❌ Error al guardar'
-    });
+      console.log('✅ Guardado en Mongo');
+
+      await sock.sendMessage(jid, {
+        text: `✅ Guardado:\n${nombre} - ${modelo} - $${coste}`
+      }, { quoted: msg });
+
+    } catch (error) {
+      console.error('❌ Error:', error);
+      await sock.sendMessage(jid, { text: '❌ Error al guardar' });
+    }
   }
-}
-  });
+});
 }
 
 //--inicio
