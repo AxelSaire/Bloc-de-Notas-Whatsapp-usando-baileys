@@ -64,7 +64,7 @@ sock.ev.on('messages.upsert', async ({ messages, type }) => {
     // ✅ Un solo JID dinámico, consistente
     const MY_JID = sock.user.id.replace(/:\d+/, '');
     const my_id = '207202224705596@lid';
-    console.log("este es mi j_id", MY_JID);
+    //console.log("este es mi j_id", MY_JID);
     if (msg.key.remoteJid !== my_id) {
       console.log('⛔ Ignorado:', msg.key.remoteJid);
       continue;

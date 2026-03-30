@@ -1,5 +1,4 @@
 const ExcelJS = require('exceljs');
-const fs = require('fs');
 const path = require('path');
 const Registro = require('./models/Registro'); 
 
@@ -9,7 +8,7 @@ async function exportarExcel() {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Registros');
 
-  // 📊 Columnas
+  // --Columnas
   sheet.columns = [
     { header: 'Nombre', key: 'nombre', width: 20 },
     { header: 'Modelo', key: 'modelo', width: 20 },
@@ -18,7 +17,7 @@ async function exportarExcel() {
     { header: 'Fecha', key: 'fecha', width: 25 }
   ];
 
-  // 📥 Insertar datos
+  // --Insertar datos
   registros.forEach(r => {
     sheet.addRow({
       nombre: r.nombre,
